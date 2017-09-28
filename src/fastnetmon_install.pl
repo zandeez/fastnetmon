@@ -4,9 +4,13 @@ use strict;
 use warnings;
 
 use Getopt::Long;
+use File::Basename;
+
+use Term::ANSIColor;
 
 my $pf_ring_version = '6.0.3';
 my $pf_ring_url = "https://github.com/ntop/PF_RING/archive/v$pf_ring_version.tar.gz";
+my $pf_ring_sha = '9fb8080defd1a079ad5f0097e8a8adb5bc264d00';
 
 my $fastnetmon_git_path = 'https://github.com/pavel-odintsov/fastnetmon.git';
 
@@ -29,6 +33,11 @@ my $ndpi_repository = 'https://github.com/pavel-odintsov/nDPI.git';
 
 my $stable_branch_name = 'v1.1.3';
 my $we_use_code_from_master = '';
+
+# By default use mirror
+my $use_mirror = 1;
+
+my $mirror_url = 'https://github.com/pavel-odintsov/fastnetmon_dependencies/raw/master/files'; 
 
 my $os_type = '';
 my $distro_type = ''; 
@@ -59,13 +68,23 @@ my $build_binary_environment = '';
 # With this option we could build full binary package
 my $create_binary_bundle = '';
 
+my $use_modern_pf_ring = '';
+
 # Get options from command line
 GetOptions(
     'use-git-master' => \$we_use_code_from_master,
     'do-not-track-me' => \$do_not_track_me,
     'build-binary-environment' => \$build_binary_environment,
     'create-binary-bundle' => \$create_binary_bundle,
+    'use-modern-pf-ring' => \$use_modern_pf_ring,
 );
+
+# Bump PF_RING version
+if ($use_modern_pf_ring) {
+    $pf_ring_version = '6.6.0';
+    $pf_ring_url = "https://github.com/ntop/PF_RING/archive/$pf_ring_version.tar.gz";
+    $pf_ring_sha = '79ff86e48df857e4e884646accfc97bdcdc54b04';
+}
 
 my $we_have_ndpi_support = '1';
 my $we_have_luajit_support = '1';
@@ -90,11 +109,34 @@ if ($enable_gobgp_backend) {
 main();
 
 sub welcome_message {
+    # Clear screen
+    print "\033[2J";
+    # Jump to 0.0 position
+    print "\033[0;0H";
+
+    print color('bold green');
     print "Hi there!\n\n";
-    print "We need about ten minutes of your time for installing FastNetMon toolkit\n";
-    print "Also we have FastNetMon Advanced version with big number of improvements: https://fastnetmon.com/fastnetmon-advanced/\n";
-    print "You could order free one-month trial for Advanced version here https://fastnetmon.com/trial/\n\n";
-    print "In case of any issues with install script please share file $install_log_path with developers\n";
+    print color('reset');
+    
+    print "We need about ten minutes of your time for installing FastNetMon toolkit\n\n";
+    print "Also, we have ";
+
+    print color('bold cyan');
+    print "FastNetMon Advanced";
+    print color('reset');
+
+    print " version with big number of improvements: ";
+
+    print color('bold cyan');
+    print "https://fastnetmon.com/fastnetmon-advanced/\n\n";
+    print color('reset');
+
+    print "You could order free one-month trial for Advanced version here ";
+    print color('bold cyan');
+    print "https://fastnetmon.com/trial/\n\n";
+    print color('reset');
+
+    print "In case of any issues with install script please use https://github.com/pavel-odintsov/fastnetmon to report them\n\n";
 }
 
 sub get_logical_cpus_number {
@@ -134,7 +176,14 @@ sub get_user_email {
     my $user_entered_valid_email = 0;
 
     do {
-        print "\nPlease provide your email address at company domain for free tool activation.\nWe will not share your email with any third party companies.\nEmail: ";
+        print "\n";
+        print "Please provide your business email address to receive important information about security updates\n";
+        print "In addition, we could send promotional messages to this email (very rare)\n";
+        print "We will provide an option to disable any email from us\n";
+        print "We will not share your email with any third party companies.\n\n";
+        print "If you continue install process you accept our subscription rules automatically\n\n";
+        
+        print "Email: ";
         my $raw_email = <STDIN>;
         chomp $raw_email;
         
@@ -347,6 +396,14 @@ sub get_sha1_sum {
 
 sub download_file {
     my ($url, $path, $expected_sha1_checksumm) = @_;
+
+    # We use pretty strange format for $path and need to sue special function to extract it
+    my ($path_filename, $path_dirs, $path_suffix) = fileparse($path);
+
+    # $path_filename
+    if ($use_mirror) {
+        $url = $mirror_url . "/" . $path_filename;
+    }
 
     `wget --no-check-certificate --quiet '$url' -O$path`;
 
@@ -1269,7 +1326,7 @@ sub install_pf_ring {
     my $we_could_install_kernel_modules = 1;
     if ($we_could_install_kernel_modules) {
         print "Download PF_RING $pf_ring_version sources\n";
-        my $pfring_download_result = download_file($pf_ring_url, $pf_ring_archive_path, '9fb8080defd1a079ad5f0097e8a8adb5bc264d00');  
+        my $pfring_download_result = download_file($pf_ring_url, $pf_ring_archive_path, $pf_ring_sha);
 
         unless ($pfring_download_result) {
             die "Can't download PF_RING sources\n";
@@ -1458,6 +1515,11 @@ sub install_fastnetmon {
 
         # We should specify compilir this way
         $cmake_params .= " -DCMAKE_C_COMPILER=/opt/gcc520/bin/gcc -DCMAKE_CXX_COMPILER=/opt/gcc520/bin/g++ "; 
+    }
+
+    # Bump version in cmake build system
+    if ($use_modern_pf_ring) {
+        system("sed -i 's/pf_ring_6.0.3/pf_ring_$pf_ring_version/' ../CMakeLists.txt")
     }
 
     if (defined($ENV{'TRAVIS'}) && $ENV{'TRAVIS'}) {

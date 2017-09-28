@@ -27,6 +27,9 @@ project(FastNetMon)
 set (FASTNETMON_VERSION_MAJOR 1)
 set (FASTNETMON_VERSION_MINOR 1)
 
+set(CMAKE_INSTALL_SYSTEMD_SERVICEDIR "/lib/systemd/system"
+  CACHE PATH "Location for systemd service files")
+
 if (ENABLE_GOBGP_SUPPORT)
     # We could not compile gRPC without C++ 11
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++11")
@@ -81,6 +84,8 @@ if (FASTNETMON_PROFILER)
     set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${FASTNETMON_PROFILE_FLAGS}")
 endif()
 
+execute_process(COMMAND sh -c ". /etc/os-release; echo $ID" OUTPUT_VARIABLE OS_ID ERROR_QUIET)
+
 ### Executables definition 
 
 # Main tool
@@ -92,7 +97,7 @@ execute_process(COMMAND git rev-list HEAD COMMAND head -n 1 OUTPUT_VARIABLE GIT_
 set(FASTNETMON_APPLICATION_VERSION "1.1.3 master git-${GIT_LAST_COMMIT_HASH}")
 configure_file(fast_platform.h.template "${PROJECT_SOURCE_DIR}/fast_platform.h")
 
-# With this flag we can diable PF_RING build via console: cmake .. -DDISABLE_PF_RING_SUPPORT=ON
+# With this flag we can disable PF_RING build via console: cmake .. -DDISABLE_PF_RING_SUPPORT=ON
 if (NOT DISABLE_PF_RING_SUPPORT) 
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         message(STATUS "You are running Linux and we can build PF_RING support")
@@ -100,6 +105,16 @@ if (NOT DISABLE_PF_RING_SUPPORT)
     else()
         message(WARNING "You are running not an Linux and we can't build PF_RING support")
     endif() 
+endif()
+
+# With this flag we could disable Netmap build this way: cmake .. -DDISABLE_NETMAP_SUPPORT=ON
+if (NOT DISABLE_NETMAP_SUPPORT)
+    set (ENABLE_NETMAP_SUPPORT ON)
+endif()
+
+if (ENABLE_NETMAP_SUPPORT)
+    message(STATUS "We will build Netmap support for you")
+    add_definitions(-DNETMAP_PLUGIN)
 endif()
 
 if (ENABLE_PFRING_SUPPORT)
@@ -135,6 +150,10 @@ add_library(fastnetmon_pcap_format STATIC fastnetmon_pcap_format.cpp)
 
 # Our tools library
 add_library(fast_library STATIC fast_library.cpp)
+
+# Our parser
+add_library(unified_parser STATIC unified_parser.cpp)
+target_link_libraries(unified_parser fastnetmon_packet_parser)
 
 # Our ipfix database library
 add_library(ipfix_rfc STATIC ipfix_rfc.cpp)
@@ -175,6 +194,7 @@ endif()
 if (ENABLE_AFPACKET_SUPPORT)
    add_definitions(-DFASTNETMON_ENABLE_AFPACKET) 
    add_library(afpacket_plugin STATIC afpacket_plugin/afpacket_collector.cpp)
+   target_link_libraries(afpacket_plugin unified_parser)
 endif()
 
 # sFLOW plugin
@@ -209,7 +229,7 @@ endif()
 # We do not enable it by default, it's testing feature
 # If you want it please build with:
 # cmake -DENABLE_LUA_SUPPORT=ON .. 
-set(ENABLE_LUA_SUPPORT yes)
+set(ENABLE_LUA_SUPPORT yes CACHE BOOL "Enable Lua support")
 if (ENABLE_LUA_SUPPORT)
     message(STATUS "We will enable LuaJIT support")
 
@@ -358,11 +378,13 @@ endif()
 # example plugin
 add_library(example_plugin STATIC example_plugin/example_collector.cpp)
 
-# Netmap plugin
-set(NETMAP_INCLUDE_DIRS "netmap_plugin/netmap_includes")
-include_directories(${NETMAP_INCLUDE_DIRS})
-add_library(netmap_plugin STATIC netmap_plugin/netmap_collector.cpp)
-target_link_libraries(netmap_plugin fastnetmon_packet_parser)
+if (ENABLE_NETMAP_SUPPORT)
+    # Netmap plugin
+    set(NETMAP_INCLUDE_DIRS "netmap_plugin/netmap_includes")
+    include_directories(${NETMAP_INCLUDE_DIRS})
+    add_library(netmap_plugin STATIC netmap_plugin/netmap_collector.cpp)
+    target_link_libraries(netmap_plugin fastnetmon_packet_parser)
+endif()
 
 # Client tool
 add_executable(fastnetmon_client fastnetmon_client.cpp)
@@ -495,6 +517,9 @@ target_link_libraries(fastnetmon ipfix_rfc)
 # Link to our functions
 target_link_libraries(fastnetmon fast_library)
 
+# link to our unified parser
+target_link_libraries(fastnetmon unified_parser)
+
 if (ENABLE_PFRING_SUPPORT)
     target_link_libraries(fastnetmon pfring_plugin)
     # Link hardware filter too
@@ -513,7 +538,11 @@ if (ENABLE_AFPACKET_SUPPORT)
     target_link_libraries(fastnetmon afpacket_plugin)
 endif()
 
-target_link_libraries(fastnetmon sflow_plugin netflow_plugin pcap_plugin example_plugin netmap_plugin)
+target_link_libraries(fastnetmon sflow_plugin netflow_plugin pcap_plugin example_plugin)
+
+if (ENABLE_NETMAP_SUPPORT)
+    target_link_libraries(fastnetmon netmap_plugin)
+endif()
 
 # cmake .. -DBUILD_PLUGIN_RUNNER=ON
 if (BUILD_PLUGIN_RUNNER)
@@ -534,7 +563,11 @@ if (BUILD_PLUGIN_RUNNER)
     target_link_libraries(fastnetmon_plugin_runner fast_library)
 
     # Add all plugins
-    target_link_libraries(fastnetmon_plugin_runner sflow_plugin netflow_plugin pcap_plugin example_plugin netmap_plugin)
+    target_link_libraries(fastnetmon_plugin_runner sflow_plugin netflow_plugin pcap_plugin example_plugin)
+
+    if (ENABLE_NETMAP_SUPPORT)
+        target_link_libraries(fastnetmon_plugin_runner netmap_plugin)
+    endif()
 
     if (ENABLE_PFRING_SUPPORT)
         target_link_libraries(fastnetmon_plugin_runner ${PFRING_LIBRARIES})
@@ -554,7 +587,10 @@ if (BUILD_PCAP_READER)
     target_link_libraries(fastnetmon_pcap_reader ${LOG4CPP_LIBRARY_PATH})
     target_link_libraries(fastnetmon_pcap_reader netflow_plugin)   
     target_link_libraries(fastnetmon_pcap_reader sflow_plugin)
-    target_link_libraries(fastnetmon_pcap_reader netmap_plugin)
+
+    if (ENABLE_NETMAP_SUPPORT)
+        target_link_libraries(fastnetmon_pcap_reader netmap_plugin)
+    endif()
 
     if (ENABLE_DPI_SUPPORT)
         target_link_libraries(fastnetmon_pcap_reader fast_dpi)
@@ -578,29 +614,35 @@ if (BUILD_TESTS)
 endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "FreeBSD" OR ${CMAKE_SYSTEM_NAME} STREQUAL "DragonFly")
-    install(TARGETS fastnetmon DESTINATION bin)
-    install(TARGETS fastnetmon_client DESTINATION bin)
-
-    install(FILES fastnetmon.conf DESTINATION etc)
-
-    # Install blank files for networks list and whitelist
-    install(FILES networks_list DESTINATION etc)
-    install(FILES networks_whitelist DESTINATION etc)
+    set(CMAKE_INSTALL_BINDIR "bin")
+    set(CMAKE_INSTALL_SBINDIR "bin")
+    set(CMAKE_INSTALL_SYSCONFDIR "etc")
 else()
-    # Linux
-    install(TARGETS fastnetmon DESTINATION /usr/sbin)
-    install(TARGETS fastnetmon_client DESTINATION /usr/bin)
-
-    install(FILES fastnetmon.conf DESTINATION /etc)
-
-    # Install blank files for networks list and whitelist
-    install(FILES networks_list DESTINATION /etc)
-    install(FILES networks_whitelist DESTINATION /etc) 
+    set(CMAKE_INSTALL_BINDIR "/usr/bin")
+    set(CMAKE_INSTALL_SBINDIR "/usr/sbin")
+    set(CMAKE_INSTALL_SYSCONFDIR "/etc")
 endif()
+
+install(TARGETS fastnetmon DESTINATION "${CMAKE_INSTALL_SBINDIR}")
+install(TARGETS fastnetmon_client DESTINATION "${CMAKE_INSTALL_BINDIR}")
+
+install(FILES fastnetmon.conf DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}")
+
+# Install blank files for networks list and whitelist
+install(FILES networks_list DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}")
+install(FILES networks_whitelist DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}")
 
 # man pages
 install(FILES man/fastnetmon.1 DESTINATION /usr/share/man/man1)
 install(FILES man/fastnetmon_client.1 DESTINATION /usr/share/man/man1)
+
+# service files
+configure_file(fastnetmon.service.in "${CMAKE_CURRENT_BINARY_DIR}/fastnetmon.service" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/fastnetmon.service" DESTINATION ${CMAKE_INSTALL_SYSTEMD_SERVICEDIR})
+
+if (${OS_ID} MATCHES debian|ubuntu)
+install(FILES fastnetmon_init_script_debian_6_7 DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/init.d RENAME fastnetmon)
+endif()
 
 # Configure cpack package builder
 # Run it with: cd build; cpack -G DEB ..

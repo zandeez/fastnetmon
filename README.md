@@ -1,4 +1,4 @@
-FastNetMon
+FastNetMon Community Edition
 ===========
 FastNetMon - A high performance DoS/DDoS load analyzer built on top of multiple packet capture engines (NetFlow, IPFIX, sFLOW, SnabbSwitch, netmap, PF_RING, PCAP).
 
@@ -15,11 +15,13 @@ License: GPLv2
 
 Project 
 -------
+- [Official site](https://fastnetmon.com)
 - [Mailing list](https://groups.google.com/forum/#!forum/fastnetmon)
-- [Roadmap](docs/ROADMAP.md)
+- [Slack](https://join.slack.com/t/fastnetmon/shared_invite/MjM3NDUwNzY4NjA5LTE1MDQ4MzE5NTAtYmU4MjYyYWNiZQ)
+- [FastNetMon Advanced, commercial edition](https://fastnetmon.com/fastnetmon-advanced/)
 - [Release Notes](https://github.com/pavel-odintsov/fastnetmon/releases)
+- If you want add an [idea](https://fastnetmon.fider.io/)
 - Chat: #fastnetmon at irc.freenode.net [web client](https://webchat.freenode.net/)
-- [Please fill out the survey, we need your voice!](https://docs.google.com/forms/d/1YoXQImMeEjBH-JPz3KYtcDwknHs8xrI538ObwSy9uZo/viewform)
 - Detailed reference in Russian: [link](docs/FastNetMon_Reference_Russian.pdf)
 
 Supported packet capture engines
@@ -65,7 +67,7 @@ Features
 Running Fastnetmon
 ------------------
 ### Supported platforms
-- Linux (Debian 6/7/8, CentOS 6/7, Ubuntu 12.04, 14.04, 16.04)
+- Linux (Debian 6/7/8/9, CentOS 6/7, Ubuntu 12.04, 14.04, 16.04)
 - FreeBSD 9, 10, 11 (please use version from ports)
 - Mac OS X Yosemite (only 1.1.2 release)
 
@@ -74,7 +76,7 @@ Running Fastnetmon
 - x86 32 bit
 
 ### Hardware requirements
-- Least 1 GB of RAM for compilation purposes
+- At least 1 GB of RAM for compilation purposes
 
 ### Router integration instructions
 - [Juniper MX Routers](docs/JUNOS_INTEGRATION.md)

@@ -588,6 +588,11 @@ bool read_pid_from_file(pid_t& pid, std::string pid_path) {
 }
 
 bool store_data_to_graphite(unsigned short int graphite_port, std::string graphite_host, graphite_data_t graphite_data) {
+    // Do not bother Graphite if we do not have any metrics here
+    if (graphite_data.size() == 0) {
+        return true;
+    }
+
     int client_sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (client_sockfd < 0) {
@@ -1007,29 +1012,6 @@ bool call_lua_function(std::string function_name, lua_State* lua_state_param, st
 }
 
 #endif
-
-inline uint64_t read_tsc_cpu_register() {
-    union {
-        uint64_t tsc_64;
-            struct {
-                uint32_t lo_32;
-                uint32_t hi_32;
-            };  
-    } tsc;
-
-    asm volatile("rdtsc" :
-        "=a" (tsc.lo_32),
-        "=d" (tsc.hi_32));
-    return tsc.tsc_64;
-}
-
-uint64_t get_tsc_freq_with_sleep() {
-    uint64_t start = read_tsc_cpu_register();
-            
-    sleep(1);
-
-    return read_tsc_cpu_register() - start;
-}
 
 json_object* serialize_attack_description_to_json(attack_details& current_attack) {
     json_object* jobj = json_object_new_object();
