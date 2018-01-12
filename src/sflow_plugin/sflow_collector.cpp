@@ -59,6 +59,7 @@ uint32_t getData32(SFSample* sample);
 bool skipTLVRecord(SFSample* sample, uint32_t tag, uint32_t len);
 bool readFlowSample(SFSample* sample, int expanded);
 void readFlowSample_header(SFSample* sample);
+void readFlowSample_gateway(SFSample* sample, uint32_t length);
 void decode_ipv4_protocol(SFSample* sample);
 void decode_ipv6_protocol(SFSample* sample);
 void print_simple_packet(struct simple_packet& packet);
@@ -470,6 +471,7 @@ bool readFlowSample(SFSample* sample, int expanded) {
     }
 
     num_elements = getData32(sample);
+
     uint32_t el;
     for (el = 0; el < num_elements; el++) {
         uint32_t tag, length;
@@ -484,6 +486,9 @@ bool readFlowSample(SFSample* sample, int expanded) {
         if (tag == SFLFLOW_HEADER) {
             // process data
             readFlowSample_header(sample);
+        } else if (tag == SFLFLOW_EX_GATEWAY) {
+            // process gateway data
+            readFlowSample_gateway(sample, length);
         } else {
             if (!skipTLVRecord(sample, tag, length)) {
                 return false;
@@ -591,6 +596,22 @@ void decode_link_layer(SFSample* sample) {
 
     // printf("vlan: %d\n",sample->in_vlan);
 }
+
+void readFlowSample_gateway(SFSample* sample, uint32_t length) {
+    getAddress(sample, &sample->bgp_nextHop); // 8 bytes or 20 bytes
+    sample->my_as = getData32(sample); // 4 bytes
+    sample->src_as = getData32(sample); // 4 bytes
+    sample->src_peer_as = getData32(sample); // 4 bytes
+    // total 20 or 32 bytes
+
+    uint32_t skip_bytes = length-20;
+    if (sample->bgp_nextHop.type == SFLADDRESSTYPE_IP_V6) {
+        skip_bytes -= 12;
+    }
+
+    skipBytes(sample, skip_bytes);
+}
+
 
 void readFlowSample_header(SFSample* sample) {
     sample->headerProtocol = getData32(sample);
